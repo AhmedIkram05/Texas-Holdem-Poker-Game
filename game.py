@@ -3,6 +3,7 @@ from typing import List
 from card import Card, Suit, Rank, HandRank
 from player import Player
 from ui import GameUI  # New import
+from hand_evaluator import evaluate_hand  # New import
 
 class Game:
     def __init__(self, player_name="Player", starting_chips=1000):
@@ -165,33 +166,6 @@ class Game:
             else:
                 print(f"{player.name} raises to {player.current_bet}.")
     
-    def evaluate_hand(self, player):
-        all_cards = player.hand + self.community_cards
-        
-        ranks = [card.rank.value for card in all_cards]
-        suits = [card.suit for card in all_cards]
-        
-        rank_counts = {}
-        for rank in ranks:
-            rank_counts[rank] = rank_counts.get(rank, 0) + 1
-        
-        pairs = [rank for rank, count in rank_counts.items() if count == 2]
-        three_of_a_kind = [rank for rank, count in rank_counts.items() if count == 3]
-        four_of_a_kind = [rank for rank, count in rank_counts.items() if count == 4]
-        
-        if len(pairs) == 1 and not three_of_a_kind:
-            return (HandRank.PAIR, max(pairs))
-        elif len(pairs) == 2:
-            return (HandRank.TWO_PAIR, max(pairs))
-        elif three_of_a_kind and not pairs:
-            return (HandRank.THREE_OF_A_KIND, three_of_a_kind[0])
-        elif three_of_a_kind and pairs:
-            return (HandRank.FULL_HOUSE, three_of_a_kind[0])
-        elif four_of_a_kind:
-            return (HandRank.FOUR_OF_A_KIND, four_of_a_kind[0])
-        else:
-            return (HandRank.HIGH_CARD, max(ranks))
-    
     def find_winners(self):
         active_players = self.get_active_players()
         if len(active_players) == 1:
@@ -199,7 +173,7 @@ class Game:
         
         player_hands = []
         for player in active_players:
-            hand_rank = self.evaluate_hand(player)
+            hand_rank = evaluate_hand(player.hand + self.community_cards)
             player_hands.append((player, hand_rank))
         
         player_hands.sort(key=lambda x: (x[1][0].value, x[1][1]), reverse=True)
@@ -213,7 +187,7 @@ class Game:
         print("\nFinal hands:")
         for player in self.get_active_players():
             hand_str = ' '.join(str(card) for card in player.hand)
-            hand_rank = self.evaluate_hand(player)
+            hand_rank = evaluate_hand(player.hand + self.community_cards)
             print(f"{player.name}: {hand_str} - {hand_rank[0].name}")
     
     def distribute_pot(self, winners):
