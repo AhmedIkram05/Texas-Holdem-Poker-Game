@@ -84,25 +84,20 @@ class Game:
         """
         Execute a betting round until all active players match the current bet.
         """
-        active_players = self.get_active_players()
-        if len(active_players) <= 1:
+        # Only proceed if more than one active player.
+        if len(self.get_active_players()) <= 1:
             return
         
-        start_idx = (self.dealer_idx + 1) % len(self.players)
-        current_idx = start_idx
-        
-        all_matched = False
-        while not all_matched:
-            player = self.players[current_idx]
-            if not player.folded:
-                if player.is_ai:
-                    make_betting_decision(self, player)  # Use AI helper
-                else:
-                    self.human_betting_decision(player)
-            current_idx = (current_idx + 1) % len(self.players)
+        while True:
+            for player in self.get_active_players():
+                if not player.folded:
+                    if player.is_ai:
+                        make_betting_decision(self, player)  # Use AI helper
+                    else:
+                        self.human_betting_decision(player)
+            # After a full cycle, check if bets are equal.
             active_players = self.get_active_players()
-            all_matched = all(p.current_bet == self.current_bet for p in active_players)
-            if current_idx == start_idx and all_matched:
+            if all(p.current_bet == self.current_bet for p in active_players):
                 break
     
     def human_betting_decision(self, player):
@@ -172,6 +167,29 @@ class Game:
             else:
                 print(f"{player.name} raises to {player.current_bet}.")
     
+    def compare_hands(self, hand1, hand2):
+        """
+        Compare two hand evaluation tuples element-by-element.
+        Returns:
+            1 if hand1 is stronger, -1 if hand2 is stronger, 0 if tied.
+        """
+        max_len = max(len(hand1), len(hand2))
+        h1 = list(hand1) + [0] * (max_len - len(hand1))
+        h2 = list(hand2) + [0] * (max_len - len(hand2))
+        for a, b in zip(h1, h2):
+            # If elements are HandRank, compare their .value.
+            if hasattr(a, 'value') and hasattr(b, 'value'):
+                if a.value > b.value:
+                    return 1
+                elif a.value < b.value:
+                    return -1
+            else:
+                if a > b:
+                    return 1
+                elif a < b:
+                    return -1
+        return 0
+
     def find_winners(self):
         """
         Evaluate hands of active players to determine the winner(s).
@@ -183,15 +201,25 @@ class Game:
         if len(active_players) == 1:
             return active_players
         
+        board_eval = evaluate_hand(self.community_cards)
         player_hands = []
         for player in active_players:
-            hand_rank = evaluate_hand(player.hand + self.community_cards)
-            player_hands.append((player, hand_rank))
-        player_hands.sort(key=lambda x: (x[1][0].value, x[1][1]), reverse=True)
+            hand_eval = evaluate_hand(player.hand + self.community_cards)
+            # If a player hasn't improved on the board, use the board's evaluation.
+            if self.compare_hands(hand_eval, board_eval) < 0:
+                hand_eval = board_eval
+            player_hands.append((player, hand_eval))
+        
+        # Determine best hand using component-wise comparison.
         best_hand = player_hands[0][1]
-        winners = [p for p, h in player_hands if h == best_hand]
+        for _, hand_eval in player_hands[1:]:
+            if self.compare_hands(hand_eval, best_hand) == 1:
+                best_hand = hand_eval
+        
+        # Collect all players whose hand compares as tied with best_hand.
+        winners = [p for p, hand_eval in player_hands if self.compare_hands(hand_eval, best_hand) == 0]
         return winners
-    
+
     def show_all_hands(self):
         """
         Display all active players' hands along with their evaluated hand rank.
@@ -251,18 +279,26 @@ class Game:
         self.post_blinds()
         self.deal_cards()
         
+        # Update UI: display player's hand and AI hands after dealing hole cards.
+        human = next((p for p in self.players if not p.is_ai), None)
+        if human:
+            self.ui.display_player_hand(human.hand)
+        ai_hands = [(p.name, p.hand, p.folded) for p in self.players if p.is_ai]
+        self.ui.display_ai_hands(ai_hands)
+        
         state = self.PRE_FLOP
         
         while state != "END":
             if state == self.PRE_FLOP:
                 print("\nPre-flop betting:")
                 self.betting_round()
-                # Transition if more than one active player
                 state = self.FLOP if len(self.get_active_players()) > 1 else self.SHOWDOWN
             
             elif state == self.FLOP:
                 self.deal_flop()
                 print(f"\nFlop: {' '.join(str(card) for card in self.community_cards)}")
+                # Update community cards display.
+                self.ui.display_community_cards(self.community_cards)
                 self.current_bet = 0
                 for player in self.players:
                     player.current_bet = 0
@@ -273,6 +309,8 @@ class Game:
             elif state == self.TURN:
                 self.deal_turn_or_river()
                 print(f"\nTurn: {' '.join(str(card) for card in self.community_cards)}")
+                # Update community cards display.
+                self.ui.display_community_cards(self.community_cards)
                 self.current_bet = 0
                 for player in self.players:
                     player.current_bet = 0
@@ -283,6 +321,8 @@ class Game:
             elif state == self.RIVER:
                 self.deal_turn_or_river()
                 print(f"\nRiver: {' '.join(str(card) for card in self.community_cards)}")
+                # Update community cards display.
+                self.ui.display_community_cards(self.community_cards)
                 self.current_bet = 0
                 for player in self.players:
                     player.current_bet = 0
@@ -291,6 +331,9 @@ class Game:
                 state = self.SHOWDOWN
             
             elif state == self.SHOWDOWN:
+                # Reveal all AI cards at showdown.
+                ai_hands = [(p.name, p.hand, p.folded) for p in self.players if p.is_ai]
+                self.ui.display_ai_hands(ai_hands, reveal_all=True)
                 active_players = self.get_active_players()
                 if len(active_players) > 1:
                     self.show_all_hands()
