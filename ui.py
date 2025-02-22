@@ -34,6 +34,11 @@ class GameUI:
         self.info_label = ttk.Label(self.info_frame, text="", font=("Helvetica", 14))
         self.info_label.grid(row=0, column=0, sticky="W")
         
+        # Add a Help button for AI action explanations.
+        help_btn = ttk.Button(self.info_frame, text="Help",
+                              command=lambda: self.show_tooltip())
+        help_btn.grid(row=0, column=1, padx=10, sticky="e")
+        
         # Table frame for community cards.
         self.table_frame = ttk.Frame(self.main_frame, padding="5", relief="groove")
         self.table_frame.grid(row=1, column=0, columnspan=2, sticky="NSEW", pady=5)
@@ -80,12 +85,15 @@ class GameUI:
             self.main_frame.rowconfigure(i, weight=1)
         self.main_frame.columnconfigure(0, weight=1)
 
+    # Constants for high‐resolution images.
+    IMAGE_SIZE = (120, 180)  # Use higher-res images (width, height)
+
     def load_card_image(self, card):
         base_path = "/Users/ahmedikram/GitHub Repos/Texas-Holdem-Poker-Game/assets/cards"
         filename = f"{card.rank.name.lower()}_of_{card.suit.name.lower()}.png"
         full_path = os.path.join(base_path, filename)
         try:
-            image = Image.open(full_path).resize((60, 90))
+            image = Image.open(full_path).resize(self.IMAGE_SIZE)  # Use high-res images
             return ImageTk.PhotoImage(image)
         except Exception:
             return None
@@ -95,7 +103,7 @@ class GameUI:
         base_path = "/Users/ahmedikram/GitHub Repos/Texas-Holdem-Poker-Game/assets/cards"
         full_path = os.path.join(base_path, "card_back.png")
         try:
-            image = Image.open(full_path).resize((60, 90))
+            image = Image.open(full_path).resize(self.IMAGE_SIZE)  # Use high-res card back
             return ImageTk.PhotoImage(image)
         except Exception:
             return None
@@ -103,9 +111,9 @@ class GameUI:
     def _display_cards(self, canvas, cards, x_offset=10, y_offset=None):
         canvas.delete("all")
         canvas.images = []  # Clear previous images.
-        # Use provided y_offset, or default to centered if not given.
+        width, height = self.IMAGE_SIZE
         if y_offset is None:
-            y_offset = (int(canvas["height"]) - 90) // 2
+            y_offset = (int(canvas["height"]) - height) // 2
         x = x_offset
         for card in cards:
             img = self.load_card_image(card)
@@ -113,7 +121,9 @@ class GameUI:
                 canvas.create_image(x, y_offset, anchor="nw", image=img)
                 canvas.images.append(img)
             else:
-                canvas.create_text(x+30, y_offset+45, text=str(card), font=("Helvetica", 14), fill="white")
+                # Draw a white rectangle card with black border and show card text.
+                canvas.create_rectangle(x, y_offset, x + width, y_offset + height, fill="white", outline="black")
+                canvas.create_text(x + width/2, y_offset + height/2, text=str(card), font=("Helvetica", 14), fill="black")
             x += 70
         canvas.update_idletasks()
 
@@ -174,10 +184,12 @@ class GameUI:
 
     def append_log(self, message):
         """
-        Append a new message to the game log.
+        Append a new message with timestamp to the game log.
         """
+        from datetime import datetime
+        timestamp = datetime.now().strftime("[%H:%M:%S] ")
         self.log_text.config(state="normal")
-        self.log_text.insert("end", message + "\n")
+        self.log_text.insert("end", timestamp + message + "\n")
         self.log_text.see("end")
         self.log_text.config(state="disabled")
     
@@ -228,3 +240,44 @@ class GameUI:
             widget.config(style="Blink.TButton" if current == "" else "")
             widget.after(300, lambda: _blink(count-1))
         _blink(count)
+
+    def animate_deal(self, canvas, image_obj, start_x, start_y, end_x, end_y, steps=20, delay=50):
+        """
+        Animate a card image moving on the given canvas.
+        Moves the image from (start_x, start_y) to (end_x, end_y) in a number of steps.
+        """
+        dx = (end_x - start_x) / steps
+        dy = (end_y - start_y) / steps
+        # Create the image at the starting position.
+        item = canvas.create_image(start_x, start_y, anchor="nw", image=image_obj)
+        def step(step_count):
+            if step_count < steps:
+                canvas.move(item, dx, dy)
+                canvas.after(delay, lambda: step(step_count + 1))
+            else:
+                # Ensure final position is exactly at (end_x, end_y)
+                canvas.coords(item, end_x, end_y)
+        step(0)
+        return item
+
+    def show_notification(self, message, duration=2000):
+        """
+        Display a temporary overlay notification in the GUI.
+        """
+        notif = tk.Label(self.top, text=message, font=("Helvetica", 16, "bold"),
+                         bg="yellow", fg="black")
+        notif.place(relx=0.5, rely=0.1, anchor="n")
+        self.top.after(duration, notif.destroy)
+
+    def show_tooltip(self):
+        """
+        Show a help dialog explaining AI actions.
+        """
+        help_text = (
+            "AI Actions Help:\n\n"
+            "- 'Calls': The AI matches the current bet.\n"
+            "- 'Raises': The AI increases the bet if its hand is strong (combined rank above threshold).\n"
+            "- 'Folds': The AI opts out of the hand if the call is too high relative to its strength.\n\n"
+            "These decisions are based on a simple rule-based evaluation of the AI's hole cards."
+        )
+        tk.messagebox.showinfo("AI Actions Explanation", help_text)
