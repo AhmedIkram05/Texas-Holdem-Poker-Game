@@ -9,8 +9,16 @@ from card import Card, Suit, Rank, HandRank
 from player import Player
 from ui import GameUI  # New import
 from hand_evaluator import evaluate_hand  # New import
+from ai import make_betting_decision  # New import
 
 class Game:
+    # Define game states.
+    PRE_FLOP = "PRE_FLOP"
+    FLOP = "FLOP"
+    TURN = "TURN"
+    RIVER = "RIVER"
+    SHOWDOWN = "SHOWDOWN"
+    
     def __init__(self, player_name="Player", starting_chips=1000):
         """
         Initialize game state including deck, players, blinds, and pot.
@@ -88,7 +96,7 @@ class Game:
             player = self.players[current_idx]
             if not player.folded:
                 if player.is_ai:
-                    self.ai_betting_decision(player)
+                    make_betting_decision(self, player)  # Use AI helper
                 else:
                     self.human_betting_decision(player)
             current_idx = (current_idx + 1) % len(self.players)
@@ -96,43 +104,6 @@ class Game:
             all_matched = all(p.current_bet == self.current_bet for p in active_players)
             if current_idx == start_idx and all_matched:
                 break
-    
-    def ai_betting_decision(self, player):
-        """
-        Simulate AI decision making for betting based on a random 'hand strength'.
-        
-        Args:
-            player (Player): The AI player making a decision.
-        """
-        to_call = self.current_bet - player.current_bet
-        if to_call == 0:
-            if random.random() < 0.7:
-                print(f"{player.name} checks.")
-                return
-            else:
-                bet_amount = random.randint(1, max(1, int(player.chips * 0.2)))
-                self.place_bet(player, bet_amount)
-                return
-                
-        hand_strength = random.random()
-        if hand_strength < 0.3:
-            if to_call > player.chips // 10:
-                player.folded = True
-                print(f"{player.name} folds.")
-            else:
-                self.place_bet(player, to_call)
-        elif hand_strength < 0.7:
-            if to_call > player.chips // 5:
-                player.folded = True
-                print(f"{player.name} folds.")
-            else:
-                self.place_bet(player, to_call)
-        else:
-            if random.random() < 0.5:
-                raise_amount = random.randint(1, max(1, int(player.chips * 0.3)))
-                self.place_bet(player, to_call + raise_amount)
-            else:
-                self.place_bet(player, to_call)
     
     def human_betting_decision(self, player):
         """
@@ -269,8 +240,8 @@ class Game:
     
     def play_round(self):
         """
-        Execute a full round consisting of initial dealing, betting rounds,
-        community card deals (flop, turn, river), and pot distribution.
+        Execute a full round using a state machine for phases:
+        PRE_FLOP, FLOP, TURN, RIVER, and SHOWDOWN.
         """
         print("\n" + "=" * 50)
         print(f"ROUND START - Dealer: {self.players[self.dealer_idx].name}")
@@ -279,39 +250,56 @@ class Game:
         self.reset_round()
         self.post_blinds()
         self.deal_cards()
-        print("\nPre-flop betting:")
-        self.betting_round()
-        if len(self.get_active_players()) > 1:
-            self.deal_flop()
-            print(f"\nFlop: {' '.join(str(card) for card in self.community_cards)}")
-            self.current_bet = 0
-            for player in self.players:
-                player.current_bet = 0
-            print("\nFlop betting:")
-            self.betting_round()
-        if len(self.get_active_players()) > 1:
-            self.deal_turn_or_river()
-            print(f"\nTurn: {' '.join(str(card) for card in self.community_cards)}")
-            self.current_bet = 0
-            for player in self.players:
-                player.current_bet = 0
-            print("\nTurn betting:")
-            self.betting_round()
-        if len(self.get_active_players()) > 1:
-            self.deal_turn_or_river()
-            print(f"\nRiver: {' '.join(str(card) for card in self.community_cards)}")
-            self.current_bet = 0
-            for player in self.players:
-                player.current_bet = 0
-            print("\nRiver betting:")
-            self.betting_round()
-        active_players = self.get_active_players()
-        if len(active_players) > 1:
-            self.show_all_hands()
-            winners = self.find_winners()
-            self.distribute_pot(winners)
-        else:
-            self.distribute_pot(active_players)
+        
+        state = self.PRE_FLOP
+        
+        while state != "END":
+            if state == self.PRE_FLOP:
+                print("\nPre-flop betting:")
+                self.betting_round()
+                # Transition if more than one active player
+                state = self.FLOP if len(self.get_active_players()) > 1 else self.SHOWDOWN
+            
+            elif state == self.FLOP:
+                self.deal_flop()
+                print(f"\nFlop: {' '.join(str(card) for card in self.community_cards)}")
+                self.current_bet = 0
+                for player in self.players:
+                    player.current_bet = 0
+                print("\nFlop betting:")
+                self.betting_round()
+                state = self.TURN if len(self.get_active_players()) > 1 else self.SHOWDOWN
+            
+            elif state == self.TURN:
+                self.deal_turn_or_river()
+                print(f"\nTurn: {' '.join(str(card) for card in self.community_cards)}")
+                self.current_bet = 0
+                for player in self.players:
+                    player.current_bet = 0
+                print("\nTurn betting:")
+                self.betting_round()
+                state = self.RIVER if len(self.get_active_players()) > 1 else self.SHOWDOWN
+            
+            elif state == self.RIVER:
+                self.deal_turn_or_river()
+                print(f"\nRiver: {' '.join(str(card) for card in self.community_cards)}")
+                self.current_bet = 0
+                for player in self.players:
+                    player.current_bet = 0
+                print("\nRiver betting:")
+                self.betting_round()
+                state = self.SHOWDOWN
+            
+            elif state == self.SHOWDOWN:
+                active_players = self.get_active_players()
+                if len(active_players) > 1:
+                    self.show_all_hands()
+                    winners = self.find_winners()
+                    self.distribute_pot(winners)
+                else:
+                    self.distribute_pot(active_players)
+                state = "END"
+        
         print("\nCurrent chip counts:")
         for player in self.players:
             print(f"{player.name}: {player.chips}")
