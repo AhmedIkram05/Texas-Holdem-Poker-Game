@@ -63,8 +63,20 @@ class GameUI:
         self.input_frame = ttk.Frame(self.main_frame, padding="5")
         self.input_frame.grid(row=5, column=0, sticky="EW", pady=5)
         
-        # Configure grid expansion.
-        for i in range(6):
+        # Remove duplicate info/status: keep only one status_frame.
+        # Add a log frame to display AI actions and game activity.
+        self.log_frame = ttk.Frame(self.main_frame, padding="5", relief="groove")
+        self.log_frame.grid(row=6, column=0, sticky="NSEW", pady=5)
+        ttk.Label(self.log_frame, text="Game Log:", font=("Helvetica", 12, "bold")).grid(row=0, column=0, sticky="W")
+        self.log_text = tk.Text(self.log_frame, height=8, state="disabled", wrap="word", font=("Helvetica", 10))
+        self.log_text.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        # Add a vertical scrollbar for the log.
+        self.log_scrollbar = ttk.Scrollbar(self.log_frame, orient="vertical", command=self.log_text.yview)
+        self.log_scrollbar.grid(row=1, column=1, sticky="ns")
+        self.log_text.configure(yscrollcommand=self.log_scrollbar.set)
+        # Remove the status_frame that was duplicating info.
+        # Adjust grid rows: now total rows=7.
+        for i in range(7):
             self.main_frame.rowconfigure(i, weight=1)
         self.main_frame.columnconfigure(0, weight=1)
 
@@ -153,18 +165,34 @@ class GameUI:
         self.ai_canvas.update_idletasks()
 
     def update_info(self, info_text):
-        self.info_label.config(text=info_text)
+        """
+        Update the status shown at the top of the UI. This panel is now used solely 
+        for brief instructions. Detailed AI/game events should be appended to the log.
+        """
+        self.info_label.config(text=info_text, foreground="black")
         self.info_label.update_idletasks()
+
+    def append_log(self, message):
+        """
+        Append a new message to the game log.
+        """
+        self.log_text.config(state="normal")
+        self.log_text.insert("end", message + "\n")
+        self.log_text.see("end")
+        self.log_text.config(state="disabled")
     
     def prompt_action(self, prompt, options):
+        # Clear previous action widgets.
         for widget in self.action_frame.winfo_children():
             widget.destroy()
+        # Update the status label with the prompt.
         self.update_info(prompt)
         self.action_var.set("")
         col = 0
         for opt in options:
+            # Create buttons with more descriptive text.
             btn = ttk.Button(self.action_frame, text=opt.capitalize(), command=lambda o=opt: self.action_var.set(o))
-            btn.grid(row=0, column=col, padx=5, pady=5)
+            btn.grid(row=0, column=col, padx=10, pady=10)
             self.blink_widget(btn)
             col += 1
         self.top.wait_variable(self.action_var)

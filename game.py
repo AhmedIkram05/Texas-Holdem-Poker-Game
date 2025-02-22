@@ -31,9 +31,9 @@ class Game:
         self.community_cards = []  # Cards shared among players.
         self.players = [
             Player(player_name, [], starting_chips, False),
-            Player("AI 1", [], starting_chips, True),
-            Player("AI 2", [], starting_chips, True),
-            Player("AI 3", [], starting_chips, True)
+            Player("David", [], starting_chips, True),
+            Player("Frank", [], starting_chips, True),
+            Player("Keith", [], starting_chips, True)
         ]
         self.pot = 0
         self.current_bet = 0
@@ -163,9 +163,9 @@ class Game:
             self.current_bet = player.current_bet
         if amount > 0:
             if player.current_bet == self.current_bet:
-                print(f"{player.name} calls {amount}.")
+                self.ui.append_log(f"{player.name} calls {amount}.")
             else:
-                print(f"{player.name} raises to {player.current_bet}.")
+                self.ui.append_log(f"{player.name} raises to {player.current_bet}.")
     
     def compare_hands(self, hand1, hand2):
         """
@@ -357,11 +357,28 @@ class Game:
             import tkinter as tk
             self.ui = GameUI(tk._default_root)
         print("Welcome to Simple Texas Hold'em!")
+        # Main loop - allow 'Play Again' when user wins the table.
         while True:
+            # Remove players with 0 chips.
             self.players = [p for p in self.players if p.chips > 0]
-            if len(self.players) == 1:
-                messagebox.showinfo("Game Over", f"{self.players[0].name} wins the game!")
-                break
+            # Check if the human is the only remaining player.
+            if len(self.players) == 1 and not self.players[0].is_ai:
+                messagebox.showinfo("Congratulations", 
+                    f"Congratulations {self.players[0].name}, you won the table!")
+                play_again = self.ui.prompt_action("Do you want to play again?", ["yes", "no"])
+                if play_again == "yes":
+                    # Reinitialize all players with 1000 chips.
+                    from player import Player
+                    user_name = self.players[0].name
+                    self.players = [
+                        Player(user_name, [], 1000, False),
+                        Player("Alice", [], 1000, True),
+                        Player("Bob", [], 1000, True),
+                        Player("Charlie", [], 1000, True)
+                    ]
+                    continue
+                else:
+                    break
             elif not any(not p.is_ai for p in self.players):
                 messagebox.showinfo("Game Over", "Game over! All human players are out.")
                 break
